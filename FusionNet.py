@@ -17,9 +17,7 @@ from SemanticAware.UnetTransformer import UnetTransformer_0, UnetTransformer_1, 
 
 
 class ConvBnLeakyRelu2d(nn.Module):
-    # convolution
-    # batch normalization
-    # leaky relu
+
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, stride=1, dilation=1, groups=1):
         super(ConvBnLeakyRelu2d, self).__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride,
@@ -42,16 +40,13 @@ class ConvBnTanh2d(nn.Module):
 
 
 class ConvLeakyRelu2d(nn.Module):
-    # convolution
-    # leaky relu
+
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, stride=1, dilation=1, groups=1):
         super(ConvLeakyRelu2d, self).__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride,
                               dilation=dilation, groups=groups)
-        # self.bn   = nn.BatchNorm2d(out_channels)
 
     def forward(self, x):
-        # print(x.size())
         return F.leaky_relu(self.conv(x), negative_slope=0.2)
 
 
@@ -90,12 +85,10 @@ class DenseBlock(nn.Module):
         super(DenseBlock, self).__init__()
         self.conv1 = ConvLeakyRelu2d(channels, channels)
         self.conv2 = ConvLeakyRelu2d(2 * channels, channels)
-        # self.conv3 = ConvLeakyRelu2d(3*channels, channels)
 
     def forward(self, x):
         x = torch.cat((x, self.conv1(x)), dim=1)
         x = torch.cat((x, self.conv2(x)), dim=1)
-        # x = torch.cat((x, self.conv3(x)), dim=1)
         return x
 
 
@@ -122,7 +115,6 @@ class FusionNet(nn.Module):
         inf_ch = [16, 32, 48]
         output = 1
 
-        # cross collaboration encoding
         self.att_block1 = FeatureMapTransformer(in_dim=48, sr_ratio=4)
         self.att_block2 = FeatureMapTransformer(in_dim=48, sr_ratio=4)
         self.att_block3 = FeatureMapTransformer(in_dim=48, sr_ratio=2)
@@ -138,12 +130,10 @@ class FusionNet(nn.Module):
         self.vis_conv = ConvLeakyRelu2d(1, vis_ch[0])
         self.vis_rgbd1 = RGBD(vis_ch[0], vis_ch[1])
         self.vis_rgbd2 = RGBD(vis_ch[1], vis_ch[2])
-        # self.vis_rgbd3 = RGBD(vis_ch[2], vis_ch[3])
+
         self.inf_conv = ConvLeakyRelu2d(1, inf_ch[0])
         self.inf_rgbd1 = RGBD(inf_ch[0], inf_ch[1])
         self.inf_rgbd2 = RGBD(inf_ch[1], inf_ch[2])
-        # self.inf_rgbd3 = RGBD(inf_ch[2], inf_ch[3])
-        # self.decode5 = ConvBnLeakyRelu2d(vis_ch[3]+inf_ch[3], vis_ch[2]+inf_ch[2])
         self.sematicGraphAttention1 = SematicGraphAttention()
         self.sematicGraphAttention2 = SematicGraphAttention()
         self.sematicGraphAttention3 = SematicGraphAttention()
@@ -158,18 +148,12 @@ class FusionNet(nn.Module):
         self.decode2 = ConvBnLeakyRelu2d(vis_ch[0] + inf_ch[0], vis_ch[0])
         self.decode1 = ConvBnTanh2d(vis_ch[0], output)
 
-        # self.spatialAttention1 = SpatialAttention(64, 64)
-        # self.spatialAttention2 = SpatialAttention(48, 48)
-        # self.spatialAttention3 = SpatialAttention(32, 32)
-
     def getDecoderAttionF(self, x, classAtionF):
         classAtionF = classAtionF.to('cuda:0')
         mulResult = torch.mul(classAtionF, x)
         addResult = torch.add(x, mulResult)
-        # 计算输入张量在通道维度上的均值和标准差
-        mean = addResult.mean(dim=(0, 2, 3), keepdim=True)  # 在通道维度、高度维度和宽度维度上求均值
-        std = addResult.std(dim=(0, 2, 3), keepdim=True)  # 在通道维度、高度维度和宽度维度上求标准差
-        # 将输入张量进行归一化处理
+        mean = addResult.mean(dim=(0, 2, 3), keepdim=True)
+        std = addResult.std(dim=(0, 2, 3), keepdim=True)
         normalized_tensor = (addResult - mean) / std
         return normalized_tensor
 
@@ -192,7 +176,6 @@ class FusionNet(nn.Module):
 
         segDecoderF = loadSegF.getSegDecoderF()
 
-        # split data into RGB and INF
         x_vis_origin = image_vis[:, :1]
         x_inf_origin = image_ir
         # encode
@@ -201,32 +184,24 @@ class FusionNet(nn.Module):
         labVisOneHot = labVisOneHot.to('cuda:0')
         labIrOneHot = labIrOneHot.to('cuda:0')
 
-        # # Transformer1后的输出
-        # visTsFormerF, irTsFormerF = self.att_block1(localVisSegF1, localIrSegF1, x_vis_p, x_inf_p)
         visTsFormerF = self.att_block_1(x_vis_p, localVisSegF1)
         irTsFormerF = self.att_block_1(x_inf_p, localVisSegF1)
 
         x_vis_p1 = self.vis_rgbd1(visTsFormerF)
         x_inf_p1 = self.inf_rgbd1(irTsFormerF)
-        # visTsFormerF, irTsFormerF = self.att_block2(localSecondVisSegF2, localIrSegF2, x_vis_p1, x_inf_p1)
         visTsFormerF = self.att_block_2(x_vis_p1, localSecondVisSegF2)
         irTsFormerF = self.att_block_2(x_inf_p1, localIrSegF2)
 
         x_vis_p2 = self.vis_rgbd2(visTsFormerF)
         x_inf_p2 = self.inf_rgbd2(irTsFormerF)
 
-        # visTsFormerF, irTsFormerF = self.att_block3(localThirdVisSegF3, localIrSegF3, x_vis_p2, x_inf_p2)
         visTsFormerF = self.att_block_3(x_vis_p2, localThirdVisSegF3)
         irTsFormerF = self.att_block_3(x_inf_p2, localThirdVisSegF3)
-        # visTsFormerF=self.unetTransformer_2(x_vis_p2,localThirdVisSegF3)
-        # irTsFormerF=self.unetTransformer_2(x_inf_p2,localThirdVisSegF3)
 
         # decode
         x = torch.cat((visTsFormerF, irTsFormerF), dim=1)
-        # x = self.sematicGraphAttention1(labVisOneHot,labIrOneHot, x)
         x = self.saBlock(labVisOneHot, labIrOneHot, x)
 
-        # x=SematicGraphAttention()
         x = self.decode4(x)
 
         ownsampled_tensor = torch.nn.functional.avg_pool2d(x, kernel_size=2)
@@ -239,7 +214,6 @@ class FusionNet(nn.Module):
         if upsampled_tensor.size() != x.size():
             upsampled_tensor = F.interpolate(upsampled_tensor, size=x.size()[2:], mode='bilinear', align_corners=False)
         x = x + upsampled_tensor
-        # x = self.spatialAttention1(x)
         x = self.decode3(x)
         ownsampled_tensor2 = torch.nn.functional.avg_pool2d(x, kernel_size=2)
         ownsampled_tensor2 = torch.nn.functional.avg_pool2d(ownsampled_tensor2, kernel_size=2)
@@ -255,15 +229,11 @@ class FusionNet(nn.Module):
             upsampled_tensor2 = F.interpolate(upsampled_tensor2, size=x.size()[2:], mode='bilinear',
                                               align_corners=False)
         x = x + upsampled_tensor2
-        # x = self.spatialAttention2(x)
-        # ownsampled_tensor2 = torch.nn.functional.avg_pool2d(x, kernel_size=2)
-        # x = self.SIM2(ownsampled_tensor2, segDecoderF[1])
-        # upsampled_tensor2 = torch.nn.functional.interpolate(x, scale_factor=2, mode='bilinear',
-        #                                                    align_corners=False)
+
         x = self.saBlock(labVisOneHot, labIrOneHot, x)
         x = self.decode2(x)
         x = self.saBlock(labVisOneHot, labIrOneHot, x)
-        # x = self.spatialAttention3(x)
+
         x = self.decode1(x)
         return x
 
@@ -274,9 +244,7 @@ class SemanticEmbeddModule(nn.Module):
         super().__init__()
 
         self.param_free_norm = nn.InstanceNorm2d(norm_nc, affine=False, track_running_stats=False)
-        # self.param_free_norm = nn.BatchNorm2d(norm_nc, affine=False)
-        # The dimension of the intermediate embedding space. Yes, hardcoded.
-        # nhidden = 128
+
         self.mlp_shared = nn.Sequential(
             nn.Conv2d(label_nc, nhidden, kernel_size=3, padding=1),
             nn.ReLU()
@@ -289,15 +257,11 @@ class SemanticEmbeddModule(nn.Module):
         self.bn = nn.BatchNorm2d(num_features=norm_nc)
 
     def forward(self, x, segmap):
-        # Part 1. generate parameter-free normalized activations
         normalized = self.param_free_norm(x)
-        # Part 2. produce scaling and bias conditioned on semantic map
         segmap = F.interpolate(segmap, size=x.size()[2:], mode='bilinear')
         actv = self.mlp_shared(segmap)
-        # actv = segmap
         gamma = self.mlp_gamma(actv)
         beta = self.mlp_beta(actv)
-        # apply scale and bias
         out = self.bn(normalized * (1 + gamma)) + beta
         return out
 
